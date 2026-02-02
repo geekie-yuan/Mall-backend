@@ -1,9 +1,12 @@
 package site.geekie.shop.shoppingmall.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -28,6 +31,7 @@ import site.geekie.shop.shoppingmall.service.AuthService;
  *   - 用户注册：验证唯一性约束，加密密码，创建用户账户
  *   - 用户登录：Spring Security认证，生成JWT令牌
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
@@ -97,12 +101,15 @@ public class AuthServiceImpl implements AuthService {
      *
      * @param request 登录请求
      * @return 登录响应，包含JWT令牌和用户信息
-     * @throws org.springframework.security.authentication.BadCredentialsException
-     *         当用户名或密码错误时抛出
+     * @throws BusinessException 当用户名或密码错误时抛出
      */
     @Override
     public LoginResponse login(LoginRequest request) {
-        // Spring Security认证
+        // ====================================================================================================
+        // 【V1不异常处理】
+        // ====================================================================================================
+        /*
+        // Spring Security认证账号密码
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
                         request.getUsername(),
@@ -120,6 +127,72 @@ public class AuthServiceImpl implements AuthService {
         UserResponse userResponse = convertToUserResponse(user);
 
         return new LoginResponse(token, userResponse);
+
+        */
+        // ====================================================================================================
+
+        // ====================================================================================================
+        // 【V2 - 使用异常处理和日志记录】
+        // ====================================================================================================
+        try {
+            log.info("【登录尝试】用户名: {}", request.getUsername());
+
+            // Spring Security认证账号密码
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(
+                            request.getUsername(),
+                            request.getPassword()
+                    )
+            );
+
+            log.info("【认证成功】用户名: {}", request.getUsername());
+
+            // 获取认证后的用户详情
+            UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+            // 生成JWT令牌
+            String token = tokenProvider.generateToken(userDetails);
+
+            // 提取用户实体并转换为响应对象
+            User user = ((SecurityUser) userDetails).getUser();
+            UserResponse userResponse = convertToUserResponse(user);
+
+            log.info("【登录成功】用户名: {}，JWT Token 已生成", request.getUsername());
+
+            // 打印生成的JWT Token（用于调试）
+            log.debug("【JWT Token】{}", token);
+
+            return new LoginResponse(token, userResponse);
+
+        } catch (BadCredentialsException e) {
+            // 账号或密码错误
+            // 需要在认证前检查账号是否存在
+            User user = userMapper.findByUsername(request.getUsername());
+
+            if (user == null) {
+                // 账号不存在
+                log.warn("【登录失败】用户名: {}，原因: 账号不存在，异常信息: {}",
+                        request.getUsername(), e.getMessage());
+            } else {
+                // 账号存在，密码错误
+                log.warn("【登录失败】用户名: {}，原因: 密码错误，异常信息: {}",
+                        request.getUsername(), e.getMessage());
+            }
+            throw new BusinessException(ResultCode.INVALID_CREDENTIALS);
+
+        } catch (AuthenticationException e) {
+            // 其他认证异常（如用户被禁用等）
+            String exceptionType = e.getClass().getSimpleName();
+            log.warn("【登录失败】用户名: {}，异常类型: {}，原因: {}，详细信息: {}",
+                    request.getUsername(), exceptionType, e.getMessage(), e.toString());
+            throw new BusinessException(ResultCode.INVALID_CREDENTIALS);
+
+        } catch (Exception e) {
+            // 其他未预期的异常
+            log.error("【系统错误】用户登录异常，用户名: {}，异常类型: {}，详细信息: {}",
+                    request.getUsername(), e.getClass().getSimpleName(), e.getMessage(), e);
+            throw new BusinessException(ResultCode.INTERNAL_SERVER_ERROR);
+        }
+        // ====================================================================================================
     }
 
     /**

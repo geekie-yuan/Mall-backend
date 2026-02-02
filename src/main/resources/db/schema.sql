@@ -157,10 +157,6 @@ INSERT INTO `user` (`username`, `password`, `email`, `role`, `status`) VALUES
 
 -- 插入示例分类
 INSERT INTO `category` (`name`, `parent_id`, `level`, `sort_order`) VALUES
-('电子产品', 0, 1, 1),
-('服装', 0, 1, 2),
-('食品', 0, 1, 3),
-('手机', 1, 2, 1),
-('电脑', 1, 2, 2),
-('男装', 2, 2, 1),
-('女装', 2, 2, 2);
+('实体商品', 0, 1, 1),
+('虚拟商品', 1, 1, 2);
+
